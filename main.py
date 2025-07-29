@@ -12,7 +12,7 @@ def is_csv_related(question: str) -> bool:
     """Basic keyword check to decide if the question is about the CSV."""
     keywords = [
         "column", "row", "data", "csv", "table", "mean", "sum", "average", "plot",
-        "graph", "null", "missing", "max", "min", "count", "value", "filter", "sort"
+        "graph", "null", "missing", "max", "min", "count", "value", "filter", "sort","dataset"
     ]
     return any(keyword in question.lower() for keyword in keywords)
 
