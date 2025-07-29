@@ -19,10 +19,10 @@ def is_csv_related(question: str) -> bool:
 def main():
     load_dotenv()
 
-    st.set_page_config(page_title="Ask your CSV")
-    st.header("Ask your CSV 📈")
+    st.set_page_config(page_title="AI CHATBOT")
+    st.header("Ask your Chatbot")
 
-    csv_file = st.file_uploader("Upload a CSV file", type="csv")
+    csv_file = st.file_uploader("Upload your CSV file", type="csv")
 
     if csv_file is not None:
         # Initialize Azure LLM
