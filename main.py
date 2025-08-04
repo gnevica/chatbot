@@ -154,6 +154,13 @@ def is_forecasting_query(question: str) -> bool:
     forecast_keywords = ["forecast", "predict", "future", "next year", "next month", "projection"]
     return any(keyword in question.lower() for keyword in forecast_keywords)
 
+def detect_target_column(df, user_question: str):
+    """Return the column name in df that matches the query."""
+    for col in df.columns[1:]:  # Skip the first (time) column
+        if col.lower() in user_question.lower():
+            return col
+    return df.columns[1]  # fallback to second column if no match
+
 # ----------------- MAIN APP -----------------
 def main():
     load_dotenv()
@@ -165,7 +172,6 @@ def main():
 
     if csv_file is not None:
         # Save uploaded CSV to a temp file
-        import tempfile
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
             tmp_file.write(csv_file.getvalue())
             tmp_csv_path = tmp_file.name
@@ -197,7 +203,7 @@ def main():
                     if is_forecasting_query(user_question):
                         st.write("🔮 Performing time series forecasting...")
                         time_col = df.columns[0]
-                        target_col = df.columns[1]
+                        target_col = detect_target_column(df, user_question)
                         fig, forecast_text = forecast_with_extremes(df, user_question, target_col, time_col)
                         st.pyplot(fig)
                         st.text(forecast_text)
