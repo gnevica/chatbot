@@ -1,4 +1,4 @@
-from langchain_experimental.agents import create_csv_agent
+'''from langchain_experimental.agents import create_csv_agent
 from langchain_openai import AzureChatOpenAI
 from dotenv import load_dotenv
 import os
@@ -69,3 +69,89 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''
+
+from langchain_experimental.agents import create_csv_agent
+from langchain_openai import AzureChatOpenAI
+from dotenv import load_dotenv
+import os
+import streamlit as st
+import matplotlib.pyplot as plt
+import io
+import contextlib
+import pandas as pd
+
+# Import forecast utilities
+from forecast import perform_forecast, is_forecast_query
+
+def is_csv_related(question: str) -> bool:
+    """Basic keyword check to decide if the question is about the CSV."""
+    keywords = [
+        "column", "row", "data", "csv", "table", "mean", "sum", "average", "plot",
+        "graph", "null", "missing", "max", "min", "count", "value", "filter", "sort", "dataset"
+    ]
+    return any(keyword in question.lower() for keyword in keywords)
+
+def main():
+    load_dotenv()
+    st.set_page_config(page_title="AI CHATBOT")
+    st.header("Ask your Chatbot")
+
+    csv_file = st.file_uploader("Upload your CSV file", type="csv")
+
+    if csv_file is not None:
+        df = pd.read_csv(csv_file)
+
+        # Initialize Azure LLM
+        llm = AzureChatOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+            azure_endpoint=os.getenv("AZURE_OPENAI_API_BASE"),
+            deployment_name=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+            temperature=0,
+        )
+
+        # Create CSV agent
+        agent = create_csv_agent(
+            llm=llm,
+            path=csv_file,
+            verbose=True,
+            allow_dangerous_code=True,
+        )
+
+        user_question = st.text_input("Ask a question:")
+
+        if user_question:
+            with st.spinner("In progress..."):
+                try:
+                    # --- Forecast queries ---
+                    if is_forecast_query(user_question):
+                        forecast_df, fig, metrics_text = perform_forecast(df, user_question)
+                        st.markdown(metrics_text)
+                        st.write("### 📈 Forecasted Values:")
+                        st.dataframe(forecast_df)
+                        st.pyplot(fig)
+
+                    # --- CSV related queries ---
+                    elif is_csv_related(user_question):
+                        with contextlib.redirect_stdout(io.StringIO()):
+                            response = agent.run(user_question)
+                        st.write(response)
+                        try:
+                            st.pyplot(plt.gcf())
+                            plt.clf()
+                        except Exception:
+                            pass
+
+                    # --- General queries ---
+                    else:
+                        response = llm.invoke(user_question)
+                        st.write(response.content)
+
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+
+if __name__ == "__main__":
+    main()
+
+
