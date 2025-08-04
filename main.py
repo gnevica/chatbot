@@ -70,7 +70,6 @@ def main():
 if __name__ == "__main__":
     main()
 '''
-
 from langchain_experimental.agents import create_csv_agent
 from langchain_openai import AzureChatOpenAI
 from dotenv import load_dotenv
@@ -82,7 +81,7 @@ import contextlib
 import pandas as pd
 import numpy as np
 from prophet import Prophet
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import tempfile
 
 # ----------------- FORECAST FUNCTION -----------------
 def forecast_with_extremes(df, user_input, target, time_col, start_y=None, end_y=None, periods=60):
@@ -119,9 +118,9 @@ def forecast_with_extremes(df, user_input, target, time_col, start_y=None, end_y
     merged = forecast[['ds', 'yhat']].merge(df2, on='ds', how='inner')
     result_text = ""
     if len(merged) > 10:
-        mae = mean_absolute_error(merged['y'], merged['yhat'])
-        rmse = np.sqrt(mean_squared_error(merged['y'], merged['yhat']))
-        r2 = r2_score(merged['y'], merged['yhat'])
+        mae = np.mean(np.abs(merged['y'] - merged['yhat']))
+        rmse = np.sqrt(np.mean((merged['y'] - merged['yhat'])**2))
+        r2 = 1 - (np.sum((merged['y'] - merged['yhat'])**2) / np.sum((merged['y'] - np.mean(merged['y']))**2))
         result_text += f"\n**Forecast Accuracy:**\n- MAE: {mae:.2f}\n- RMSE: {rmse:.2f}\n- R² Score: {r2:.4f}\n"
     else:
         result_text += "\nNot enough overlapping data to evaluate accuracy.\n"
@@ -142,9 +141,9 @@ def forecast_with_extremes(df, user_input, target, time_col, start_y=None, end_y
 
     return fig, result_text
 
-
-# ----------------- CSV & CHATBOT APP -----------------
+# ----------------- HELPER FUNCTIONS -----------------
 def is_csv_related(question: str) -> bool:
+    """Basic keyword check to decide if the question is about the CSV."""
     keywords = [
         "column", "row", "data", "csv", "table", "mean", "sum", "average", "plot",
         "graph", "null", "missing", "max", "min", "count", "value", "filter", "sort","dataset"
@@ -155,16 +154,23 @@ def is_forecasting_query(question: str) -> bool:
     forecast_keywords = ["forecast", "predict", "future", "next year", "next month", "projection"]
     return any(keyword in question.lower() for keyword in forecast_keywords)
 
-
+# ----------------- MAIN APP -----------------
 def main():
     load_dotenv()
+
     st.set_page_config(page_title="AI CHATBOT")
     st.header("Ask your Chatbot")
 
     csv_file = st.file_uploader("Upload your CSV file", type="csv")
 
     if csv_file is not None:
-        df = pd.read_csv(csv_file)
+        # Save uploaded CSV to a temp file
+        import tempfile
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
+            tmp_file.write(csv_file.getvalue())
+            tmp_csv_path = tmp_file.name
+
+        df = pd.read_csv(tmp_csv_path)
 
         # Initialize Azure LLM
         llm = AzureChatOpenAI(
@@ -175,9 +181,10 @@ def main():
             temperature=0,
         )
 
+        # Create CSV agent
         agent = create_csv_agent(
             llm=llm,
-            path=csv_file,
+            path=tmp_csv_path,  # Use temp file path
             verbose=True,
             allow_dangerous_code=True,
         )
@@ -188,33 +195,31 @@ def main():
             with st.spinner("In progress..."):
                 try:
                     if is_forecasting_query(user_question):
-                        # ---- Forecasting Handling ----
                         st.write("🔮 Performing time series forecasting...")
-                        
-                        # Simple assumption: first column = time, second column = target
                         time_col = df.columns[0]
                         target_col = df.columns[1]
-
                         fig, forecast_text = forecast_with_extremes(df, user_question, target_col, time_col)
                         st.pyplot(fig)
                         st.text(forecast_text)
 
                     elif is_csv_related(user_question):
+                        # Capture stdout and any plot generated
                         with contextlib.redirect_stdout(io.StringIO()):
                             response = agent.run(user_question)
+
                         st.write(response)
 
+                        # Try to display the last generated plot
                         try:
                             st.pyplot(plt.gcf())
-                            plt.clf()
+                            plt.clf()  # Clear after rendering
                         except Exception:
-                            pass
+                            pass  # No plot was created
                     else:
                         response = llm.invoke(user_question)
                         st.write(response.content)
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
-
 
 if __name__ == "__main__":
     main()
