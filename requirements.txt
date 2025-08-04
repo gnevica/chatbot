@@ -8,3 +8,4 @@ tabulate
 langchain_community
 langchain_openai
 prophet
+scikit-learn
