@@ -96,7 +96,7 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     future = model.make_future_dataframe(periods=periods, freq='M')
     forecast = model.predict(future)
 
-    # --- Plot Forecast ---
+
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(df2['ds'], df2['y'], label='Actual Values', color='black', marker='o')
     ax.plot(forecast['ds'], forecast['yhat'], label='Forecasted Values', color='darkviolet', marker='s', linewidth=2)
@@ -111,7 +111,7 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     ax.legend()
     plt.tight_layout()
 
-    # Merge for evaluation
+
     merged = forecast[['ds', 'yhat']].merge(df2, on='ds', how='inner')
     result_text = ""
     if len(merged) > 10:
@@ -152,7 +152,7 @@ def detect_target_column(df, user_question: str):
     for col in df.columns[1:]:
         if col.lower() in user_question.lower():
             return col
-    return df.columns[1]  # fallback
+    return df.columns[1] 
 
 def detect_forecast_periods(user_question: str) -> int:
     """
@@ -165,10 +165,10 @@ def detect_forecast_periods(user_question: str) -> int:
         num = int(match.group(1))
         unit = match.group(2)
         if "year" in unit:
-            return num * 12  # Prophet uses months for periods
+            return num * 12  
         else:
             return num
-    return 60  # default
+    return 60  
 
 # ----------------- MAIN APP -----------------
 def main():
@@ -179,14 +179,13 @@ def main():
     csv_file = st.file_uploader("Upload your CSV file", type="csv")
 
     if csv_file is not None:
-        # Save uploaded CSV to a temp file
+     
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
             tmp_file.write(csv_file.getvalue())
             tmp_csv_path = tmp_file.name
 
         df = pd.read_csv(tmp_csv_path)
 
-        # Initialize Azure LLM
         llm = AzureChatOpenAI(
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
@@ -195,7 +194,7 @@ def main():
             temperature=0,
         )
 
-        # Create CSV agent
+        
         agent = create_csv_agent(
             llm=llm,
             path=tmp_csv_path,
@@ -223,7 +222,7 @@ def main():
 
                         st.write(response)
 
-                        # ✅ Only show plot if a figure exists (no white box)
+                        
                         if plt.get_fignums():
                             st.pyplot(plt.gcf())
                             plt.clf()
