@@ -5,7 +5,6 @@ import os
 import streamlit as st
 import matplotlib.pyplot as plt
 import io
-
 import contextlib
 
 def is_csv_related(question: str) -> bool:
@@ -55,12 +54,10 @@ def main():
 
                         st.write(response)
 
-                        # Try to display the last generated plot
-                        try:
+                        # ✅ Only show plot if a figure exists (no white box)
+                        if plt.get_fignums():
                             st.pyplot(plt.gcf())
                             plt.clf()  # Clear after rendering
-                        except Exception:
-                            pass  # No plot was created
                     else:
                         response = llm.invoke(user_question)
                         st.write(response.content)
@@ -69,6 +66,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''
+
 '''
 
 from langchain_experimental.agents import create_csv_agent
