@@ -82,9 +82,10 @@ import pandas as pd
 import numpy as np
 from prophet import Prophet
 import tempfile
+import re
 
 # ----------------- FORECAST FUNCTION -----------------
-def forecast_with_extremes(df, user_input, target, time_col, start_y=None, end_y=None, periods=60):
+def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     df2 = df[[time_col, target]].dropna()
     df2.columns = ['ds', 'y']
     df2['ds'] = pd.to_datetime(df2['ds'], errors='coerce')
@@ -93,11 +94,8 @@ def forecast_with_extremes(df, user_input, target, time_col, start_y=None, end_y
     model = Prophet()
     model.fit(df2)
 
-    future = (pd.date_range(start=f"{start_y}-01-01", end=f"{end_y}-12-31", freq='MS')
-              if start_y and end_y else
-              model.make_future_dataframe(periods=periods, freq='M')['ds'])
-    
-    forecast = model.predict(pd.DataFrame({'ds': future}))
+    future = model.make_future_dataframe(periods=periods, freq='M')
+    forecast = model.predict(future)
 
     # --- Plot Forecast ---
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -133,17 +131,14 @@ def forecast_with_extremes(df, user_input, target, time_col, start_y=None, end_y
         min_row = forecast.loc[forecast['yhat'].idxmin()]
         result_text += f"\n**Lowest forecasted '{target}'** on {min_row['ds'].date()} → {min_row['yhat']:.2f}\n"
     else:
-        forecast['year'] = forecast['ds'].dt.year
-        filtered = forecast[(forecast['year'] >= (start_y or 0)) & (forecast['year'] <= (end_y or 3000))] if start_y else forecast.tail(periods)
         result_text += f"\n**Forecasted values for '{target}':**\n"
-        for _, row in filtered.iterrows():
+        for _, row in forecast.tail(periods).iterrows():
             result_text += f"{row['ds'].date()}: {row['yhat']:.2f}\n"
 
     return fig, result_text
 
 # ----------------- HELPER FUNCTIONS -----------------
 def is_csv_related(question: str) -> bool:
-    """Basic keyword check to decide if the question is about the CSV."""
     keywords = [
         "column", "row", "data", "csv", "table", "mean", "sum", "average", "plot",
         "graph", "null", "missing", "max", "min", "count", "value", "filter", "sort","dataset"
@@ -155,11 +150,26 @@ def is_forecasting_query(question: str) -> bool:
     return any(keyword in question.lower() for keyword in forecast_keywords)
 
 def detect_target_column(df, user_question: str):
-    """Return the column name in df that matches the query."""
-    for col in df.columns[1:]:  # Skip the first (time) column
+    for col in df.columns[1:]:
         if col.lower() in user_question.lower():
             return col
-    return df.columns[1]  # fallback to second column if no match
+    return df.columns[1]  # fallback
+
+def detect_forecast_periods(user_question: str) -> int:
+    """
+    Detects periods in months from queries like:
+    - 'next 5 years' -> 60 months
+    - 'next 8 months' -> 8 months
+    """
+    match = re.search(r"next (\d+) (year|month)", user_question.lower())
+    if match:
+        num = int(match.group(1))
+        unit = match.group(2)
+        if "year" in unit:
+            return num * 12  # Prophet uses months for periods
+        else:
+            return num
+    return 60  # default
 
 # ----------------- MAIN APP -----------------
 def main():
@@ -190,7 +200,7 @@ def main():
         # Create CSV agent
         agent = create_csv_agent(
             llm=llm,
-            path=tmp_csv_path,  # Use temp file path
+            path=tmp_csv_path,
             verbose=True,
             allow_dangerous_code=True,
         )
@@ -204,7 +214,8 @@ def main():
                         st.write("🔮 Performing time series forecasting...")
                         time_col = df.columns[0]
                         target_col = detect_target_column(df, user_question)
-                        fig, forecast_text = forecast_with_extremes(df, user_question, target_col, time_col)
+                        periods = detect_forecast_periods(user_question)
+                        fig, forecast_text = forecast_with_extremes(df, user_question, target_col, time_col, periods)
                         st.pyplot(fig)
                         st.text(forecast_text)
 
@@ -215,17 +226,18 @@ def main():
 
                         st.write(response)
 
-                        # Try to display the last generated plot
-                        try:
+                        # ✅ Only show plot if any figure exists
+                        if plt.get_fignums():
                             st.pyplot(plt.gcf())
-                            plt.clf()  # Clear after rendering
-                        except Exception:
-                            pass  # No plot was created
+                            plt.clf()
+
                     else:
                         response = llm.invoke(user_question)
                         st.write(response.content)
+
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     main()
+
