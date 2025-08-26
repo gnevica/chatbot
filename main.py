@@ -87,6 +87,77 @@ import re
 def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     df2 = df[[time_col, target]].dropna()
     df2.columns = ['ds', 'y']
+
+    # ✅ Try parsing with common formats
+    try:
+        df2['ds'] = pd.to_datetime(df2['ds'], format="%d-%m-%Y", errors='coerce')
+    except:
+        try:
+            df2['ds'] = pd.to_datetime(df2['ds'], format="%Y-%m-%d", errors='coerce')
+        except:
+            df2['ds'] = pd.to_datetime(df2['ds'], errors='coerce')
+
+    # ✅ Clean numeric y (handles Walmart "$12,345" and Weather floats)
+    df2['y'] = pd.to_numeric(df2['y'].astype(str).str.replace('[\$,]', '', regex=True), errors='coerce')
+    df2 = df2.dropna()
+
+    # ✅ Detect frequency dynamically
+    freq = pd.infer_freq(df2['ds'].sort_values())
+    if freq is None:
+        # Heuristic: if > 2000 rows → assume daily, else weekly
+        freq = 'D' if len(df2) > 2000 else 'W'
+
+    # ✅ Train Prophet
+    model = Prophet()
+    model.fit(df2)
+
+    # Extend into future
+    future = model.make_future_dataframe(periods=periods, freq=freq)
+    forecast = model.predict(future)
+
+    # --- PLOT ---
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(df2['ds'], df2['y'], label='Actual Values', color='black', marker='o')
+    ax.plot(forecast['ds'], forecast['yhat'], label='Forecasted Values', color='darkviolet', marker='s', linewidth=2)
+    ax.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'],
+                    color='plum', alpha=0.3, label='Confidence Interval')
+
+    ax.set_title(f"Forecast of {target}", fontsize=16, fontweight='bold')
+    ax.set_xlabel(time_col, fontsize=12)
+    ax.set_ylabel(target, fontsize=12)
+    plt.xticks(rotation=45)
+    ax.grid(True)
+    ax.legend()
+    plt.tight_layout()
+
+    # --- ACCURACY ---
+    merged = forecast[['ds', 'yhat']].merge(df2, on='ds', how='inner')
+    result_text = ""
+    if len(merged) > 10:
+        mae = np.mean(np.abs(merged['y'] - merged['yhat']))
+        rmse = np.sqrt(np.mean((merged['y'] - merged['yhat']) ** 2))
+        r2 = 1 - (np.sum((merged['y'] - merged['yhat']) ** 2) / np.sum((merged['y'] - np.mean(merged['y'])) ** 2))
+        result_text += f"\n**Forecast Accuracy:**\n- MAE: {mae:.2f}\n- RMSE: {rmse:.2f}\n- R² Score: {r2:.4f}\n"
+    else:
+        result_text += "\nNot enough overlapping data to evaluate accuracy.\n"
+
+    # --- EXTREMES OR FULL FORECAST ---
+    if "highest" in user_input or "maximum" in user_input:
+        max_row = forecast.loc[forecast['yhat'].idxmax()]
+        result_text += f"\n**Highest forecasted '{target}'** on {max_row['ds'].date()} → {max_row['yhat']:.2f}\n"
+    elif "lowest" in user_input or "minimum" in user_input:
+        min_row = forecast.loc[forecast['yhat'].idxmin()]
+        result_text += f"\n**Lowest forecasted '{target}'** on {min_row['ds'].date()} → {min_row['yhat']:.2f}\n"
+    else:
+        result_text += f"\n**Forecasted values for '{target}':**\n"
+        for _, row in forecast.tail(periods).iterrows():
+            result_text += f"{row['ds'].date()}: {row['yhat']:.2f}\n"
+
+    return fig, result_text
+
+'''def forecast_with_extremes(df, user_input, target, time_col, periods=60):
+    df2 = df[[time_col, target]].dropna()
+    df2.columns = ['ds', 'y']
     df2['ds'] = pd.to_datetime(df2['ds'], errors='coerce')
     df2 = df2.dropna()
 
@@ -134,7 +205,7 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
         for _, row in forecast.tail(periods).iterrows():
             result_text += f"{row['ds'].date()}: {row['yhat']:.2f}\n"
 
-    return fig, result_text
+    return fig, result_text'''
     '''MAE and RMSE: Should be as low as possible, ideally <10% of the data’s range.
 
 R²:
