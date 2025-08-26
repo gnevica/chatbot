@@ -208,15 +208,7 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     return fig, result_text'''
     '''MAE and RMSE: Should be as low as possible, ideally <10% of the data’s range.
 
-R²:
 
-0.9–1.0 → Excellent
-
-0.7–0.9 → Good
-
-0.5–0.7 → Moderate
-
-<0.5 → Weak model'''
 
 # ----------------- HELPER FUNCTIONS -----------------
 def is_csv_related(question: str) -> bool:
