@@ -206,7 +206,7 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
             result_text += f"{row['ds'].date()}: {row['yhat']:.2f}\n"
 
     return fig, result_text'''
-    '''MAE and RMSE: Should be as low as possible, ideally <10% of the data’s range.
+
 
 
 
