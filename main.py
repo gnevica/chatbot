@@ -136,7 +136,7 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
         for _, row in forecast.tail(periods).iterrows():
             result_text += f"{row['ds'].date()}: {row['yhat']:.2f}\n"
 
-    return fig, result_text'''
+    return fig, result_text
 
  ----------------- HELPER FUNCTIONS -----------------
 def is_csv_related(question: str) -> bool:
