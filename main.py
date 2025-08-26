@@ -207,9 +207,6 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
 
     return fig, result_text'''
 
-
-
-
 # ----------------- HELPER FUNCTIONS -----------------
 def is_csv_related(question: str) -> bool:
     keywords = [
