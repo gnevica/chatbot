@@ -1,4 +1,4 @@
-# AI-Powered CSV Analysis, Forecasting & General Query Chatbot
+AI-Powered Chatbot for Data Analysis and Time-Series Forecasting     
 
 ## Project Overview
 
