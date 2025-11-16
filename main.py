@@ -1,6 +1,5 @@
 from langchain_experimental.agents import create_csv_agent
 from langchain_openai import AzureChatOpenAI
-from langchain.agents import AgentExecutor
 
 from dotenv import load_dotenv
 import os
@@ -29,16 +28,15 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     forecast = model.predict(future)
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(df2['ds'], df2['y'], label='Actual Values', color='black', marker='o')
-    ax.plot(forecast['ds'], forecast['yhat'], label='Forecasted Values', color='darkviolet', marker='s', linewidth=2)
-    ax.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'],
-                    color='plum', alpha=0.3, label='Confidence Interval')
+    ax.plot(df2['ds'], df2['y'], label='Actual', color='black', marker='o')
+    ax.plot(forecast['ds'], forecast['yhat'], label='Forecast', color='purple', marker='s')
+    ax.fill_between(forecast['ds'], forecast['yhat_lower'], forecast['yhat_upper'], color='violet', alpha=0.3)
 
-    ax.set_title(f"Forecast of {target}", fontsize=16, fontweight='bold')
-    ax.set_xlabel(time_col, fontsize=12)
-    ax.set_ylabel(target, fontsize=12)
+    ax.set_title(f"Forecast of {target}")
+    ax.set_xlabel(time_col)
+    ax.set_ylabel(target)
     plt.xticks(rotation=45)
-    ax.grid(True)
+    ax.grid()
     ax.legend()
     plt.tight_layout()
 
@@ -48,65 +46,61 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
         mae = np.mean(np.abs(merged['y'] - merged['yhat']))
         rmse = np.sqrt(np.mean((merged['y'] - merged['yhat']) ** 2))
         r2 = 1 - (np.sum((merged['y'] - merged['yhat']) ** 2) / np.sum((merged['y'] - np.mean(merged['y'])) ** 2))
-        result_text += f"\n**Forecast Accuracy:**\n- MAE: {mae:.2f}\n- RMSE: {rmse:.2f}\n- R² Score: {r2:.4f}\n"
-    else:
-        result_text += "\nNot enough overlapping data to evaluate accuracy.\n"
+        result_text += f"\n**Accuracy:** MAE={mae:.2f}, RMSE={rmse:.2f}, R²={r2:.4f}\n"
 
-    if "highest" in user_input or "maximum" in user_input:
-        max_row = forecast.loc[forecast['yhat'].idxmax()]
-        result_text += f"\n**Highest forecasted '{target}'** on {max_row['ds'].date()} → {max_row['yhat']:.2f}\n"
-    elif "lowest" in user_input or "minimum" in user_input:
-        min_row = forecast.loc[forecast['yhat'].idxmin()]
-        result_text += f"\n**Lowest forecasted '{target}'** on {min_row['ds'].date()} → {min_row['yhat']:.2f}\n"
+    if "highest" in user_input:
+        row = forecast.loc[forecast['yhat'].idxmax()]
+        result_text += f"\nHighest forecast → {row['ds'].date()} : {row['yhat']:.2f}"
+    elif "lowest" in user_input:
+        row = forecast.loc[forecast['yhat'].idxmin()]
+        result_text += f"\nLowest forecast → {row['ds'].date()} : {row['yhat']:.2f}"
     else:
-        result_text += f"\n**Forecasted values for '{target}':**\n"
+        result_text += "\nForecasted values:\n"
         for _, row in forecast.tail(periods).iterrows():
-            result_text += f"{row['ds'].date()}: {row['yhat']:.2f}\n"
+            result_text += f"{row['ds'].date()} : {row['yhat']:.2f}\n"
 
     return fig, result_text
 
 
 # ----------------- HELPERS -----------------
-def is_csv_related(question: str) -> bool:
+def is_csv_related(q: str) -> bool:
     keywords = [
-        "column", "row", "data", "csv", "table", "mean", "sum", "average", "plot",
-        "graph", "null", "missing", "max", "min", "count", "value", "filter", "sort", "dataset"
+        "column", "row", "data", "csv", "table", "mean", "sum", "average",
+        "plot", "graph", "null", "missing", "max", "min", "count", "value",
+        "filter", "sort", "dataset"
     ]
-    return any(keyword in question.lower() for keyword in keywords)
+    return any(k in q.lower() for k in keywords)
 
 
-def is_forecasting_query(question: str) -> bool:
-    forecast_keywords = ["forecast", "predict", "future", "next year", "next month", "projection"]
-    return any(keyword in question.lower() for keyword in forecast_keywords)
+def is_forecasting_query(q: str) -> bool:
+    return any(k in q.lower() for k in ["forecast", "predict", "future", "next year", "next month"])
 
 
-def detect_target_column(df, user_question: str):
+def detect_target_column(df, q):
     for col in df.columns[1:]:
-        if col.lower() in user_question.lower():
+        if col.lower() in q.lower():
             return col
     return df.columns[1]
 
 
-def detect_forecast_periods(user_question: str) -> int:
-    match = re.search(r"next (\d+) (year|month)", user_question.lower())
-    if match:
-        num = int(match.group(1))
-        unit = match.group(2)
-        return num * 12 if "year" in unit else num
-    return 60
+def detect_forecast_periods(q):
+    m = re.search(r"next (\d+) (year|month)", q.lower())
+    if not m:
+        return 60
+    num, unit = int(m.group(1)), m.group(2)
+    return num * 12 if "year" in unit else num
 
 
-def detect_datetime_column(df: pd.DataFrame) -> str:
+def detect_datetime_column(df):
     for col in df.columns:
         if np.issubdtype(df[col].dtype, np.datetime64):
             return col
-
     for col in df.columns:
-        if any(keyword in col.lower() for keyword in ["date", "time"]):
+        if "date" in col.lower() or "time" in col.lower():
             try:
                 pd.to_datetime(df[col], errors="raise")
                 return col
-            except Exception:
+            except:
                 continue
     return df.columns[0]
 
@@ -114,17 +108,17 @@ def detect_datetime_column(df: pd.DataFrame) -> str:
 # ----------------- MAIN APP -----------------
 def main():
     load_dotenv()
-    st.set_page_config(page_title="AI CHATBOT")
-    st.header("Ask your Chatbot")
+    st.set_page_config(page_title="AI Chatbot")
+    st.header("Ask your AI Chatbot")
 
-    csv_file = st.file_uploader("Upload your CSV file", type="csv")
+    csv_file = st.file_uploader("Upload CSV", type="csv")
 
-    if csv_file is not None:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
-            tmp_file.write(csv_file.getvalue())
-            tmp_csv_path = tmp_file.name
+    if csv_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+            tmp.write(csv_file.getvalue())
+            path = tmp.name
 
-        df = pd.read_csv(tmp_csv_path)
+        df = pd.read_csv(path)
 
         llm = AzureChatOpenAI(
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -134,40 +128,34 @@ def main():
             temperature=0,
         )
 
-        # --- FIXED SECTION (IMPORTANT!!) ---
-        agent_temp = create_csv_agent(
+        # ⭐ WORKING CSV AGENT (NO AgentExecutor!)
+        agent = create_csv_agent(
             llm=llm,
-            path=tmp_csv_path,
+            path=path,
             verbose=True,
             allow_dangerous_code=True,
+            handle_parsing_errors=True   # ★ FIXES YOUR ORIGINAL ERROR
         )
 
-        # WRAP the agent to handle parsing errors:
-        agent = AgentExecutor.from_agent_and_tools(
-            agent=agent_temp.agent,
-            tools=agent_temp.tools,
-            verbose=True,
-            handle_parsing_errors=True
-        )
-        # -----------------------------------
+        question = st.text_input("Ask a question:")
 
-        user_question = st.text_input("Ask a question:")
-
-        if user_question:
-            with st.spinner("In progress..."):
+        if question:
+            with st.spinner("Processing..."):
                 try:
-                    if is_forecasting_query(user_question):
-                        st.write("🔮 Performing time series forecasting...")
-                        time_col = detect_datetime_column(df)
-                        target_col = detect_target_column(df, user_question)
-                        periods = detect_forecast_periods(user_question)
-                        fig, forecast_text = forecast_with_extremes(df, user_question, target_col, time_col, periods)
-                        st.pyplot(fig)
-                        st.text(forecast_text)
+                    if is_forecasting_query(question):
+                        st.write("🔮 Forecasting...")
 
-                    elif is_csv_related(user_question):
+                        time_col = detect_datetime_column(df)
+                        target = detect_target_column(df, question)
+                        periods = detect_forecast_periods(question)
+
+                        fig, text = forecast_with_extremes(df, question, target, time_col, periods)
+                        st.pyplot(fig)
+                        st.text(text)
+
+                    elif is_csv_related(question):
                         with contextlib.redirect_stdout(io.StringIO()):
-                            response = agent.run(user_question)
+                            response = agent.run(question)
 
                         st.write(response)
 
@@ -176,8 +164,8 @@ def main():
                             plt.clf()
 
                     else:
-                        response = llm.invoke(user_question)
-                        st.write(response.content)
+                        resp = llm.invoke(question)
+                        st.write(resp.content)
 
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
