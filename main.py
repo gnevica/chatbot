@@ -1,6 +1,7 @@
 from langchain_experimental.agents import create_csv_agent
 from langchain_openai import AzureChatOpenAI
-from langchain.agents.agent import AgentExecutor
+from langchain.agents import AgentExecutor
+
 from dotenv import load_dotenv
 import os
 import streamlit as st
