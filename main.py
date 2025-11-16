@@ -1,5 +1,6 @@
 from langchain_experimental.agents import create_csv_agent
 from langchain_openai import AzureChatOpenAI
+from langchain.agents import AgentExecutor
 from dotenv import load_dotenv
 import os
 import streamlit as st
@@ -26,7 +27,6 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     future = model.make_future_dataframe(periods=periods, freq='M')
     forecast = model.predict(future)
 
-    # Plot forecast
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.plot(df2['ds'], df2['y'], label='Actual Values', color='black', marker='o')
     ax.plot(forecast['ds'], forecast['yhat'], label='Forecasted Values', color='darkviolet', marker='s', linewidth=2)
@@ -41,7 +41,6 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     ax.legend()
     plt.tight_layout()
 
-    # Evaluate accuracy
     merged = forecast[['ds', 'yhat']].merge(df2, on='ds', how='inner')
     result_text = ""
     if len(merged) > 10:
@@ -52,7 +51,6 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     else:
         result_text += "\nNot enough overlapping data to evaluate accuracy.\n"
 
-    # Max/Min forecast
     if "highest" in user_input or "maximum" in user_input:
         max_row = forecast.loc[forecast['yhat'].idxmax()]
         result_text += f"\n**Highest forecasted '{target}'** on {max_row['ds'].date()} → {max_row['yhat']:.2f}\n"
@@ -67,7 +65,7 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     return fig, result_text
 
 
-# HELPER FUNCTIONS
+# ----------------- HELPERS -----------------
 def is_csv_related(question: str) -> bool:
     keywords = [
         "column", "row", "data", "csv", "table", "mean", "sum", "average", "plot",
@@ -93,21 +91,11 @@ def detect_forecast_periods(user_question: str) -> int:
     if match:
         num = int(match.group(1))
         unit = match.group(2)
-        if "year" in unit:
-            return num * 12
-        else:
-            return num
+        return num * 12 if "year" in unit else num
     return 60
 
 
 def detect_datetime_column(df: pd.DataFrame) -> str:
-    """
-    Detect the datetime column in the dataframe.
-    Priority:
-    1. Columns already parsed as datetime
-    2. Columns with 'date' or 'time' in their name
-    3. Fallback: first column
-    """
     for col in df.columns:
         if np.issubdtype(df[col].dtype, np.datetime64):
             return col
@@ -119,11 +107,10 @@ def detect_datetime_column(df: pd.DataFrame) -> str:
                 return col
             except Exception:
                 continue
-
     return df.columns[0]
 
 
-# MAIN APP
+# ----------------- MAIN APP -----------------
 def main():
     load_dotenv()
     st.set_page_config(page_title="AI CHATBOT")
@@ -146,12 +133,22 @@ def main():
             temperature=0,
         )
 
-        agent = create_csv_agent(
+        # --- FIXED SECTION (IMPORTANT!!) ---
+        agent_temp = create_csv_agent(
             llm=llm,
             path=tmp_csv_path,
             verbose=True,
             allow_dangerous_code=True,
         )
+
+        # WRAP the agent to handle parsing errors:
+        agent = AgentExecutor.from_agent_and_tools(
+            agent=agent_temp.agent,
+            tools=agent_temp.tools,
+            verbose=True,
+            handle_parsing_errors=True
+        )
+        # -----------------------------------
 
         user_question = st.text_input("Ask a question:")
 
@@ -160,7 +157,7 @@ def main():
                 try:
                     if is_forecasting_query(user_question):
                         st.write("🔮 Performing time series forecasting...")
-                        time_col = detect_datetime_column(df)   # <--- AUTO DETECT DATETIME COL
+                        time_col = detect_datetime_column(df)
                         target_col = detect_target_column(df, user_question)
                         periods = detect_forecast_periods(user_question)
                         fig, forecast_text = forecast_with_extremes(df, user_question, target_col, time_col, periods)
