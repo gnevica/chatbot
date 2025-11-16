@@ -67,7 +67,7 @@ def forecast_with_extremes(df, user_input, target, time_col, periods=60):
     return fig, result_text
 
 
-# ----------------- HELPER FUNCTIONS -----------------
+# HELPER FUNCTIONS
 def is_csv_related(question: str) -> bool:
     keywords = [
         "column", "row", "data", "csv", "table", "mean", "sum", "average", "plot",
@@ -123,7 +123,7 @@ def detect_datetime_column(df: pd.DataFrame) -> str:
     return df.columns[0]
 
 
-# ----------------- MAIN APP -----------------
+# MAIN APP
 def main():
     load_dotenv()
     st.set_page_config(page_title="AI CHATBOT")
@@ -187,5 +187,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
